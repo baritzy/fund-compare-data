@@ -10,9 +10,12 @@
     },
     {
       "text": "/do create file offline-test.txt in p-projects/the-biz/output/ with text: queued offline",
-      "status": "pending",
+      "status": "done",
       "timestamp": "2026-04-10T18:43:21.357Z",
-      "source": "telegram-offline"
+      "source": "telegram-offline",
+      "executed_at": "2026-04-10T18:45:41.945Z",
+      "executed_by": "local-server",
+      "result": "success"
     }
   ],
   "messages": [
