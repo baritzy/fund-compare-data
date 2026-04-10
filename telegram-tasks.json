@@ -7,6 +7,12 @@
       "executed_at": "2026-04-10T18:40:18.403Z",
       "executed_by": "local-server",
       "result": "success"
+    },
+    {
+      "text": "/do create file offline-test.txt in p-projects/the-biz/output/ with text: queued offline",
+      "status": "pending",
+      "timestamp": "2026-04-10T18:43:21.357Z",
+      "source": "telegram-offline"
     }
   ],
   "messages": [
@@ -14,6 +20,11 @@
       "role": "user",
       "text": "/do build landing page for vibe coders",
       "timestamp": "2026-04-10T18:03:53.426Z"
+    },
+    {
+      "role": "user",
+      "text": "/do create file offline-test.txt in p-projects/the-biz/output/ with text: queued offline",
+      "timestamp": "2026-04-10T18:43:21.357Z"
     }
   ]
 }
