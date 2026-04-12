@@ -16,6 +16,12 @@
       "executed_at": "2026-04-10T18:45:41.945Z",
       "executed_by": "local-server",
       "result": "success"
+    },
+    {
+      "text": "כשתזכיר לי את מה שביקשתי אז תוסיף גם \"עוזר אישי\"",
+      "status": "pending",
+      "timestamp": "2026-04-12T11:15:17.274Z",
+      "source": "telegram-offline"
     }
   ],
   "messages": [
@@ -28,6 +34,11 @@
       "role": "user",
       "text": "/do create file offline-test.txt in p-projects/the-biz/output/ with text: queued offline",
       "timestamp": "2026-04-10T18:43:21.357Z"
+    },
+    {
+      "role": "user",
+      "text": "כשתזכיר לי את מה שביקשתי אז תוסיף גם \"עוזר אישי\"",
+      "timestamp": "2026-04-12T11:15:17.274Z"
     }
   ]
 }
