@@ -86,11 +86,16 @@ def update_us_etfs():
             y3 = round(raw_3y * 100, 2) if abs(raw_3y) < 5 else round(raw_3y, 2)
             raw_5y = info.get('fiveYearAverageReturn') or 0
             y5 = round(raw_5y * 100, 2) if abs(raw_5y) < 5 else round(raw_5y, 2)
+            # If Yahoo returns 0 for young ETFs, treat as no data
+            if y3 == 0.0:
+                y3 = None
+            if y5 == 0.0:
+                y5 = None
             y3c = round(((1 + y3/100)**3 - 1) * 100, 2) if y3 is not None else None
             y5c = round(((1 + y5/100)**5 - 1) * 100, 2) if y5 is not None else None
             results.append({
                 'id': ticker, 'n': info.get('longName', ticker), 'tk': ticker,
-                'mf': mf, 'yy': 0, 'l12': y3,
+                'mf': mf, 'yy': 0, 'l12': 0,  # will be filled by batch download in Step 3
                 'y3': y3, 'y5': y5, 'y3c': y3c, 'y5c': y5c,
                 'av': round((info.get('totalAssets') or 0) / 1e6, 0),
                 'idx': index_name, 'mgr': info.get('fundFamily', ''),
@@ -118,11 +123,15 @@ def update_us_etfs():
                 y3 = round(raw_3y * 100, 2) if abs(raw_3y) < 5 else round(raw_3y, 2)
                 raw_5y = info.get('fiveYearAverageReturn') or 0
                 y5 = round(raw_5y * 100, 2) if abs(raw_5y) < 5 else round(raw_5y, 2)
+                if y3 == 0.0:
+                    y3 = None
+                if y5 == 0.0:
+                    y5 = None
                 y3c = round(((1 + y3/100)**3 - 1) * 100, 2) if y3 is not None else None
                 y5c = round(((1 + y5/100)**5 - 1) * 100, 2) if y5 is not None else None
                 results.append({
                     'id': ticker, 'n': info.get('longName', ticker), 'tk': ticker,
-                    'mf': mf, 'yy': 0, 'l12': y3,
+                    'mf': mf, 'yy': 0, 'l12': 0,
                     'y3': y3, 'y5': y5, 'y3c': y3c, 'y5c': y5c,
                     'av': round((info.get('totalAssets') or 0) / 1e6, 0),
                     'idx': index_name, 'mgr': info.get('fundFamily', ''),
@@ -148,6 +157,29 @@ def update_us_etfs():
                 pass
     except Exception as e:
         log(f"  WARN: YTD batch fetch failed: {e}")
+
+    # Step 3: Compute trailing 12-month return from price data
+    try:
+        l12_start = date.today() - timedelta(days=395)  # ~13 months to ensure coverage
+        l12_data = yf.download(tickers_list, start=str(l12_start), end=str(date.today()), progress=False)
+        l12_close = l12_data['Close']
+        for fund in results:
+            tk = fund['tk']
+            try:
+                if tk in l12_close.columns:
+                    col = l12_close[tk].dropna()
+                    if len(col) >= 2:
+                        # Find the price closest to 12 months ago
+                        target_date = date.today() - timedelta(days=365)
+                        idx = col.index.get_indexer([str(target_date)], method='nearest')[0]
+                        price_12m_ago = float(col.iloc[idx])
+                        price_latest = float(col.iloc[-1])
+                        if price_12m_ago > 0:
+                            fund['l12'] = round((price_latest / price_12m_ago - 1) * 100, 2)
+            except:
+                pass
+    except Exception as e:
+        log(f"  WARN: 12-month batch fetch failed: {e}")
 
     if len(results) < 50:
         log(f"US ETFs: only {len(results)}, skipping")
