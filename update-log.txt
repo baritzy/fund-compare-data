@@ -16,3 +16,9 @@
 [2026-04-15] Bizportal: scraping 811 funds...
 [2026-04-15] Bizportal: enriched 0 funds with y3/y5/y3c/y5c
 [2026-04-15] === Done ===
+[2026-04-16] === Starting daily update ===
+[2026-04-16] US ETFs: 101 funds saved (with y3c/y5c)
+[2026-04-16] TASE: saved 811 tracking funds
+[2026-04-16] Bizportal: scraping 811 funds...
+[2026-04-16] Bizportal: enriched 0 funds with y3/y5/y3c/y5c
+[2026-04-16] === Done ===
