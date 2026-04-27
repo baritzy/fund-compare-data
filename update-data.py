@@ -6,6 +6,7 @@ Fetches: TASE Maya (Israeli funds) + Yahoo Finance (US ETFs) + Bizportal (3yr/5y
 import subprocess
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -328,8 +329,8 @@ def enrich_from_bizportal():
 
 def enrich_from_maya_detail():
     """Fetch Maya per-fund detail endpoint to enrich each fund with variableFee (vf),
-    saleLoad (sl), and refresh managementFee (mf) / trusteeFee (tf) from the detail
-    record (which can differ from the list endpoint)."""
+    saleLoad (sl), addedValueFee (avf), and refresh managementFee (mf) / trusteeFee (tf)
+    from the detail record. Fail-soft: keep prior values when a fetch returns None."""
     import requests
 
     path = os.path.join(BASE_DIR, 'tracking-funds.json')
@@ -337,6 +338,8 @@ def enrich_from_maya_detail():
         log("Maya detail: no tracking-funds.json to enrich")
         return False
 
+    # Load existing data BEFORE enriching so we can preserve prior vf/sl/avf
+    # if today fetch returns None (fail-soft against Maya 403/rate-limit).
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
@@ -346,15 +349,33 @@ def enrich_from_maya_detail():
         'Accept': 'application/json',
     }
 
+    # Track consecutive 403/429 responses to detect rate-limit / IP block
+    rate_limit_state = {'consecutive_blocks': 0, 'aborted': False, 'lock': __import__('threading').Lock()}
+    RATE_LIMIT_ABORT_THRESHOLD = 50
+
     def fetch_detail(fund_id):
+        # Abort early if rate-limit threshold tripped
+        if rate_limit_state['aborted']:
+            return fund_id, None, 'aborted'
+        # Jitter to avoid hammering Maya
+        time.sleep(random.uniform(0.05, 0.20))
         url = f'https://maya.tase.co.il/api/v1/funds/mutual/{fund_id}'
         try:
             resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code in (403, 429):
+                with rate_limit_state['lock']:
+                    rate_limit_state['consecutive_blocks'] += 1
+                    if rate_limit_state['consecutive_blocks'] >= RATE_LIMIT_ABORT_THRESHOLD:
+                        rate_limit_state['aborted'] = True
+                return fund_id, None, 'blocked'
             if resp.status_code != 200:
-                return fund_id, None
-            return fund_id, resp.json()
+                return fund_id, None, 'http-error'
+            # Reset consecutive-block counter on success
+            with rate_limit_state['lock']:
+                rate_limit_state['consecutive_blocks'] = 0
+            return fund_id, resp.json(), 'ok'
         except Exception:
-            return fund_id, None
+            return fund_id, None, 'exception'
 
     # Optional sample limit for local testing
     limit_env = os.environ.get('LIMIT')
@@ -370,58 +391,100 @@ def enrich_from_maya_detail():
     log(f"Maya detail: fetching {total} funds...")
 
     results = {}
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(fetch_detail, fid): fid for fid in fund_ids}
         for future in as_completed(futures):
-            fid, detail = future.result()
+            fid, detail, status = future.result()
             if detail is not None:
                 results[fid] = detail
 
-    enriched_vf = 0
+    if rate_limit_state['aborted']:
+        kept_count = sum(1 for f in data['funds'] if f.get('id') in set(fund_ids) and f.get('vf') is not None)
+        log(f"Maya rate-limit detected — aborting enrichment, kept {kept_count} existing values")
+
+    # Counters for new vs kept-from-previous vs still-missing per field set (vf primary)
+    new_count = 0
+    kept_count = 0
+    missing_count = 0
     enriched_sl = 0
+    enriched_avf = 0
     refreshed_mf = 0
     refreshed_tf = 0
+    fund_id_set = set(fund_ids)
     for f in data['funds']:
         fid = f.get('id')
-        if not fid or fid not in results:
+        if not fid or fid not in fund_id_set:
             continue
-        d = results[fid]
-        # variableFee -> vf
-        vf = d.get('variableFee')
-        if vf is not None:
-            try:
-                f['vf'] = round(float(vf), 4)
-                enriched_vf += 1
-            except (TypeError, ValueError):
-                pass
-        # saleLoad -> sl
-        sl = d.get('saleLoad')
-        if sl is not None:
-            try:
-                f['sl'] = round(float(sl), 4)
-                enriched_sl += 1
-            except (TypeError, ValueError):
-                pass
-        # Refresh managementFee/trusteeFee from detail (overwrite if present)
-        mf = d.get('managementFee')
-        if mf is not None:
-            try:
-                f['mf'] = round(float(mf), 4)
-                refreshed_mf += 1
-            except (TypeError, ValueError):
-                pass
-        tf = d.get('trusteeFee')
-        if tf is not None:
-            try:
-                f['tf'] = round(float(tf), 4)
-                refreshed_tf += 1
-            except (TypeError, ValueError):
-                pass
+        d = results.get(fid)
+        had_vf = f.get('vf') is not None
+        # variableFee -> vf  (fail-soft)
+        new_vf_value = None
+        if d is not None:
+            vf_raw = d.get('variableFee')
+            if vf_raw is not None:
+                try:
+                    new_vf_value = round(float(vf_raw), 4)
+                except (TypeError, ValueError):
+                    new_vf_value = None
+        if new_vf_value is not None:
+            f['vf'] = new_vf_value
+            new_count += 1
+        elif had_vf:
+            kept_count += 1
+        else:
+            missing_count += 1
+
+        # saleLoad -> sl (fail-soft)
+        new_sl_value = None
+        if d is not None:
+            sl_raw = d.get('saleLoad')
+            if sl_raw is not None:
+                try:
+                    new_sl_value = round(float(sl_raw), 4)
+                except (TypeError, ValueError):
+                    new_sl_value = None
+        if new_sl_value is not None:
+            f['sl'] = new_sl_value
+            enriched_sl += 1
+        # else: keep existing f['sl'] if present (fail-soft, no-op)
+
+        # addedValueFee -> avf (fail-soft, NEW field per Patch 2)
+        new_avf_value = None
+        if d is not None:
+            avf_raw = d.get('addedValueFee')
+            if avf_raw is not None:
+                try:
+                    new_avf_value = round(float(avf_raw), 4)
+                except (TypeError, ValueError):
+                    new_avf_value = None
+        if new_avf_value is not None:
+            f['avf'] = new_avf_value
+            enriched_avf += 1
+        # else: keep existing f['avf'] if present (fail-soft, no-op)
+
+        # Refresh managementFee/trusteeFee from detail (overwrite when present)
+        if d is not None:
+            mf = d.get('managementFee')
+            if mf is not None:
+                try:
+                    f['mf'] = round(float(mf), 4)
+                    refreshed_mf += 1
+                except (TypeError, ValueError):
+                    pass
+            tf = d.get('trusteeFee')
+            if tf is not None:
+                try:
+                    f['tf'] = round(float(tf), 4)
+                    refreshed_tf += 1
+                except (TypeError, ValueError):
+                    pass
 
     with open(path, 'w', encoding='utf-8') as f2:
         json.dump(data, f2, ensure_ascii=False, separators=(',', ':'))
-    log(f"Maya detail: enriched {enriched_vf}/{total} funds with vf "
-        f"(sl={enriched_sl}, mf-refresh={refreshed_mf}, tf-refresh={refreshed_tf})")
+    log(f"Maya detail: {new_count} new + {kept_count} kept-from-previous + "
+        f"{missing_count} still-missing (out of {total})")
+    log(f"Maya detail: sl={enriched_sl}, avf={enriched_avf}, "
+        f"mf-refresh={refreshed_mf}, tf-refresh={refreshed_tf}")
     return True
 
 
@@ -444,6 +507,8 @@ def enrich_inception_dates():
     )
 
     def fetch_inception(fund_id):
+        # Per-host delay to avoid hammering Bizportal (shared with enrich_from_bizportal)
+        time.sleep(random.uniform(0.10, 0.20))
         url = f'https://www.bizportal.co.il/mutualfunds/quote/generalview/{fund_id}'
         try:
             resp = requests.get(url, headers=headers, timeout=10)
@@ -474,7 +539,7 @@ def enrich_inception_dates():
     log(f"Bizportal generalview: fetching inception for {total} funds...")
 
     results = {}
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(fetch_inception, fid): fid for fid in fund_ids}
         for future in as_completed(futures):
             fid, inc = future.result()
