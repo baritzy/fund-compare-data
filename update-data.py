@@ -6,9 +6,10 @@ Fetches: TASE Maya (Israeli funds) + Yahoo Finance (US ETFs) + Bizportal (3yr/5y
 import subprocess
 import json
 import os
+import re
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # All paths relative to repo root (where this script lives)
@@ -325,12 +326,183 @@ def enrich_from_bizportal():
     return True
 
 
+def enrich_from_maya_detail():
+    """Fetch Maya per-fund detail endpoint to enrich each fund with variableFee (vf),
+    saleLoad (sl), and refresh managementFee (mf) / trusteeFee (tf) from the detail
+    record (which can differ from the list endpoint)."""
+    import requests
+
+    path = os.path.join(BASE_DIR, 'tracking-funds.json')
+    if not os.path.exists(path):
+        log("Maya detail: no tracking-funds.json to enrich")
+        return False
+
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0',
+        'Referer': 'https://maya.tase.co.il/funds/main',
+        'Accept': 'application/json',
+    }
+
+    def fetch_detail(fund_id):
+        url = f'https://maya.tase.co.il/api/v1/funds/mutual/{fund_id}'
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code != 200:
+                return fund_id, None
+            return fund_id, resp.json()
+        except Exception:
+            return fund_id, None
+
+    # Optional sample limit for local testing
+    limit_env = os.environ.get('LIMIT')
+    fund_ids = [f['id'] for f in data['funds'] if f.get('id')]
+    if limit_env:
+        try:
+            n = int(limit_env)
+            fund_ids = fund_ids[:n]
+            log(f"Maya detail: LIMIT={n} (sample mode)")
+        except ValueError:
+            pass
+    total = len(fund_ids)
+    log(f"Maya detail: fetching {total} funds...")
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_detail, fid): fid for fid in fund_ids}
+        for future in as_completed(futures):
+            fid, detail = future.result()
+            if detail is not None:
+                results[fid] = detail
+
+    enriched_vf = 0
+    enriched_sl = 0
+    refreshed_mf = 0
+    refreshed_tf = 0
+    for f in data['funds']:
+        fid = f.get('id')
+        if not fid or fid not in results:
+            continue
+        d = results[fid]
+        # variableFee -> vf
+        vf = d.get('variableFee')
+        if vf is not None:
+            try:
+                f['vf'] = round(float(vf), 4)
+                enriched_vf += 1
+            except (TypeError, ValueError):
+                pass
+        # saleLoad -> sl
+        sl = d.get('saleLoad')
+        if sl is not None:
+            try:
+                f['sl'] = round(float(sl), 4)
+                enriched_sl += 1
+            except (TypeError, ValueError):
+                pass
+        # Refresh managementFee/trusteeFee from detail (overwrite if present)
+        mf = d.get('managementFee')
+        if mf is not None:
+            try:
+                f['mf'] = round(float(mf), 4)
+                refreshed_mf += 1
+            except (TypeError, ValueError):
+                pass
+        tf = d.get('trusteeFee')
+        if tf is not None:
+            try:
+                f['tf'] = round(float(tf), 4)
+                refreshed_tf += 1
+            except (TypeError, ValueError):
+                pass
+
+    with open(path, 'w', encoding='utf-8') as f2:
+        json.dump(data, f2, ensure_ascii=False, separators=(',', ':'))
+    log(f"Maya detail: enriched {enriched_vf}/{total} funds with vf "
+        f"(sl={enriched_sl}, mf-refresh={refreshed_mf}, tf-refresh={refreshed_tf})")
+    return True
+
+
+def enrich_inception_dates():
+    """Fetch Bizportal generalview page per fund and parse the inception date
+    (תאריך הקמה) into ISO YYYY-MM-DD, stored as 'inc'."""
+    import requests
+
+    path = os.path.join(BASE_DIR, 'tracking-funds.json')
+    if not os.path.exists(path):
+        log("Bizportal generalview: no tracking-funds.json to enrich")
+        return False
+
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0'}
+    inception_re = re.compile(
+        r'<dt>\s*תאריך הקמה\s*</dt>\s*<dd>\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})\s*</dd>'
+    )
+
+    def fetch_inception(fund_id):
+        url = f'https://www.bizportal.co.il/mutualfunds/quote/generalview/{fund_id}'
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code != 200:
+                return fund_id, None
+            m = inception_re.search(resp.text)
+            if not m:
+                return fund_id, None
+            try:
+                d = datetime.strptime(m.group(1), '%d/%m/%Y').date()
+                return fund_id, d.isoformat()
+            except ValueError:
+                return fund_id, None
+        except Exception:
+            return fund_id, None
+
+    # Optional sample limit for local testing
+    limit_env = os.environ.get('LIMIT')
+    fund_ids = [f['id'] for f in data['funds'] if f.get('id')]
+    if limit_env:
+        try:
+            n = int(limit_env)
+            fund_ids = fund_ids[:n]
+            log(f"Bizportal generalview: LIMIT={n} (sample mode)")
+        except ValueError:
+            pass
+    total = len(fund_ids)
+    log(f"Bizportal generalview: fetching inception for {total} funds...")
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_inception, fid): fid for fid in fund_ids}
+        for future in as_completed(futures):
+            fid, inc = future.result()
+            if inc:
+                results[fid] = inc
+
+    enriched = 0
+    for f in data['funds']:
+        fid = f.get('id')
+        if fid and fid in results:
+            f['inc'] = results[fid]
+            enriched += 1
+
+    with open(path, 'w', encoding='utf-8') as f2:
+        json.dump(data, f2, ensure_ascii=False, separators=(',', ':'))
+    log(f"Bizportal generalview: enriched {enriched}/{total} with inception")
+    return True
+
+
+
 if __name__ == '__main__':
     log("=== Starting daily update ===")
     us_ok = update_us_etfs()
     tase_ok = update_tase_tracking()
     if tase_ok:
         enrich_from_bizportal()
+        enrich_from_maya_detail()
+        enrich_inception_dates()
     if not us_ok and not tase_ok:
         log("No data updated")
         sys.exit(1)
