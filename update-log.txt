@@ -737,3 +737,14 @@
 [2026-06-24] Bizportal generalview: fetching inception for 823 funds...
 [2026-06-24] Bizportal generalview: enriched 821/823 with inception
 [2026-06-24] === Done ===
+[2026-06-25] === Starting daily update ===
+[2026-06-25] US ETFs: 101 funds saved (with y3c/y5c)
+[2026-06-25] TASE: saved 823 tracking funds
+[2026-06-25] Bizportal: scraping 823 funds...
+[2026-06-25] Bizportal: enriched 434 funds with y3/y5/y3c/y5c
+[2026-06-25] Maya detail: fetching 823 funds...
+[2026-06-25] Maya detail: 696 new + 0 kept-from-previous + 127 still-missing (out of 823)
+[2026-06-25] Maya detail: sl=823, avf=0, mf-refresh=823, tf-refresh=823
+[2026-06-25] Bizportal generalview: fetching inception for 823 funds...
+[2026-06-25] Bizportal generalview: enriched 821/823 with inception
+[2026-06-25] === Done ===
