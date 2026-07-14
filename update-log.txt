@@ -951,3 +951,19 @@
 [2026-07-13] Bizportal generalview: fetching inception for 822 funds...
 [2026-07-13] Bizportal generalview: enriched 821/822 with inception
 [2026-07-13] === Done ===
+[2026-07-14] === Starting daily update ===
+[2026-07-14]   WARN: XLF: Failed to perform, curl: (28) Operation timed out after 30002 milliseconds with 0 bytes received. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
+[2026-07-14]   WARN: XLE: Expecting value: line 1 column 1 (char 0)
+[2026-07-14]   Retrying 2 failed tickers after 10s...
+[2026-07-14]   Retry OK: XLF
+[2026-07-14]   Retry FAIL: XLE: Expecting value: line 1 column 1 (char 0)
+[2026-07-14] US ETFs: 100 funds saved (with y3c/y5c)
+[2026-07-14] TASE: saved 824 tracking funds
+[2026-07-14] Bizportal: scraping 824 funds...
+[2026-07-14] Bizportal: enriched 438 funds with y3/y5/y3c/y5c
+[2026-07-14] Maya detail: fetching 824 funds...
+[2026-07-14] Maya detail: 697 new + 0 kept-from-previous + 127 still-missing (out of 824)
+[2026-07-14] Maya detail: sl=824, avf=0, mf-refresh=824, tf-refresh=824
+[2026-07-14] Bizportal generalview: fetching inception for 824 funds...
+[2026-07-14] Bizportal generalview: enriched 822/824 with inception
+[2026-07-14] === Done ===
