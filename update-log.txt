@@ -1067,3 +1067,23 @@
 [2026-07-23] Bizportal generalview: fetching inception for 828 funds...
 [2026-07-23] Bizportal generalview: enriched 827/828 with inception
 [2026-07-23] === Done ===
+[2026-07-24] === Starting daily update ===
+[2026-07-24]   Retrying 16 failed tickers after 10s...
+[2026-07-24]   Retry OK: DIA
+[2026-07-24]   Retry OK: XLY
+[2026-07-24]   Retry OK: AGG
+[2026-07-24]   Retry OK: IEF
+[2026-07-24]   Retry OK: SHY
+[2026-07-24]   Retry OK: LQD
+[2026-07-24]   Retry OK: HYG
+[2026-07-24]   Retry OK: USO
+[2026-07-24] US ETFs: 93 funds saved (with y3c/y5c)
+[2026-07-24] TASE: saved 828 tracking funds
+[2026-07-24] Bizportal: scraping 828 funds...
+[2026-07-24] Bizportal: enriched 442 funds with y3/y5/y3c/y5c
+[2026-07-24] Maya detail: fetching 828 funds...
+[2026-07-24] Maya detail: 698 new + 0 kept-from-previous + 130 still-missing (out of 828)
+[2026-07-24] Maya detail: sl=828, avf=0, mf-refresh=828, tf-refresh=828
+[2026-07-24] Bizportal generalview: fetching inception for 828 funds...
+[2026-07-24] Bizportal generalview: enriched 827/828 with inception
+[2026-07-24] === Done ===
